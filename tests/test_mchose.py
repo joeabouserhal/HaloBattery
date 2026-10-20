@@ -19,6 +19,7 @@ import os
 import sys
 import types
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -165,6 +166,114 @@ class PollTest(unittest.TestCase):
         self.assertNotIn(FFA0, {p for p, _ in fake.sent})
         self.assertTrue(any("no A1 answer" in line for line in diag))
 
+
+class G7SmoothingTest(unittest.TestCase):
+    def setUp(self):
+        self.provider = M.MchoseProvider()
+
+    def sample(self, level, at, charging=False):
+        with mock.patch.object(M.time, "monotonic", return_value=at):
+            return self.provider._smooth_g7(level, charging)
+
+    def test_startup_80_waits_for_a_real_reading_instead_of_claiming_80(self):
+        self.assertIsNone(self.sample(80, 0))
+        self.assertIsNone(self.sample(80, 60))
+        self.assertIsNone(self.sample(80, 120))
+        self.assertEqual(self.sample(12, 180), 12)
+
+    def test_stale_80_is_rejected_at_high_and_low_charge(self):
+        for base in (100, 94, 46, 12, 2):
+            with self.subTest(base=base):
+                self.provider = M.MchoseProvider()
+                self.assertEqual(self.sample(base, 0), base)
+                for i in range(1, 20):
+                    self.assertEqual(self.sample(80, i * 60), base)
+
+    def test_real_80_near_the_current_trend_is_kept(self):
+        for i, level in enumerate([83, 82, 81, 80, 80, 80]):
+            value = self.sample(level, i * 60)
+        self.assertEqual(value, 80)
+
+    def test_an_isolated_non80_spike_does_not_move_the_median(self):
+        for i in range(5):
+            self.sample(46, i * 60)
+        self.assertEqual(self.sample(65, 300), 46)
+        self.assertEqual(self.sample(46, 360), 46)
+
+    def test_repeated_fast_refreshes_do_not_replace_the_median(self):
+        for i in range(5):
+            self.sample(46, i * 60)
+        for at in range(300, 305):
+            self.assertEqual(self.sample(12, at), 46)
+
+    def test_sustained_discharge_is_followed_without_ten_percent_rounding(self):
+        for i in range(5):
+            self.sample(46, i * 60)
+        for i in range(5, 8):
+            value = self.sample(37, i * 60)
+        self.assertEqual(value, 37)
+
+    def test_wrong_initial_reading_can_recover_upwards(self):
+        for i in range(5):
+            self.sample(12, i * 60)
+        for i in range(5, 8):
+            value = self.sample(18, i * 60)
+        self.assertEqual(value, 18)
+
+    def test_real_low_battery_is_not_floored_to_ten_percent(self):
+        self.assertEqual(self.sample(2, 0), 2)
+        for i in range(1, 5):
+            value = self.sample(0, i * 60)
+        self.assertEqual(value, 0)
+
+    def test_charging_is_immediate_and_accepts_a_real_80(self):
+        self.sample(12, 0)
+        self.assertEqual(self.sample(80, 1, charging=True), 80)
+        self.assertEqual(self.sample(100, 2, charging=True), 100)
+        self.assertEqual(self.sample(100, 3), 100)
+
+    def test_offline_gap_starts_fresh_without_inferring_a_charge_curve(self):
+        self.sample(12, 0)
+        self.assertIsNone(self.sample(80, 600))
+        self.assertEqual(self.sample(100, 660), 100)
+
+    def test_backward_clock_starts_a_fresh_estimate(self):
+        self.sample(46, 100)
+        self.assertEqual(self.sample(2, 50), 2)
+
+    def test_new_lower_reading_after_a_gap_is_not_held_at_the_old_value(self):
+        self.sample(46, 0)
+        self.assertEqual(self.sample(2, 600), 2)
+
+    def test_other_mchose_devices_keep_the_upstream_readings(self):
+        entries = [{"vendor_id": M.MEASURED_VID, "product_id": 0x1020,
+                    "usage_page": M.CONFIG_PAGE, "usage": 1,
+                    "path": b"other-mchose", "product_string": "Other MCHOSE"}]
+        with mock.patch.object(M.hidlist, "enumerate", side_effect=lambda vid: entries if vid == M.MEASURED_VID else []), \
+                mock.patch.object(self.provider, "_read_collection", side_effect=[(83, 0, 0x31, 9), (42, 0, 0x31, 9)]):
+            self.assertEqual(self.provider.poll()[0].level, 83)
+            self.assertEqual(self.provider.poll()[0].level, 42)
+
+    def test_provider_cleans_only_g7_output_and_keeps_raw_diagnostics(self):
+        entries = [{"vendor_id": M.G7_VID, "product_id": M.G7_PID,
+                    "usage_page": M.CONFIG_PAGE, "usage": 0x10,
+                    "path": b"g7", "product_string": "MCHOSE G7"}]
+        with mock.patch.object(M.hidlist, "enumerate", side_effect=lambda vid: entries if vid == M.G7_VID else []), \
+                mock.patch.object(self.provider, "_read_g7", side_effect=[(12, False), (80, False)]), \
+                mock.patch.object(M.time, "monotonic", side_effect=[0, 60]):
+            self.assertEqual(self.provider.poll()[0].level, 12)
+            self.assertEqual(self.provider.poll()[0].level, 12)
+        self.assertTrue(any("raw=80%" in line for line in self.provider.diagnostics()))
+
+    def test_provider_reports_unknown_for_only_a_startup_fallback(self):
+        entries = [{"vendor_id": M.G7_VID, "product_id": M.G7_PID,
+                    "usage_page": M.CONFIG_PAGE, "usage": 0x10,
+                    "path": b"g7", "product_string": "MCHOSE G7"}]
+        with mock.patch.object(M.hidlist, "enumerate", side_effect=lambda vid: entries if vid == M.G7_VID else []), \
+                mock.patch.object(self.provider, "_read_g7", return_value=(80, False)):
+            status, = self.provider.poll()
+        self.assertIsNone(status.level)
+        self.assertTrue(status.online)
 
 if __name__ == "__main__":
     unittest.main()

@@ -73,6 +73,8 @@ in every reading so far).
 from __future__ import annotations
 
 import time
+from collections import deque
+from statistics import median
 from typing import Dict, List, Optional, Tuple
 
 import hid
@@ -246,9 +248,37 @@ class MchoseProvider(Provider):
 
     def __init__(self):
         self._diag: List[str] = []
-        self._last: Dict[str, Tuple[int, bool, float]] = {}
+        self._last: Dict[str, Tuple[Optional[int], bool, float]] = {}
         self._names: Dict[str, str] = {}
         self._models: Dict[str, int] = {}
+        self._g7_samples = deque(maxlen=5)
+        self._g7_seen_at: Optional[float] = None
+        self._g7_sample_at: Optional[float] = None
+
+    def _smooth_g7(self, level: int, charging: bool) -> Optional[int]:
+        """Reject the G7 trace's stale 80% replies and median-filter normal jitter."""
+        now = time.monotonic()
+        if self._g7_seen_at is None or not 0 <= now - self._g7_seen_at < 600:
+            self._g7_samples.clear()
+            self._g7_sample_at = None
+        self._g7_seen_at = now
+        if charging:
+            self._g7_samples.clear()
+            self._g7_samples.append(level)
+            self._g7_sample_at = now
+        elif level == 80 and (not self._g7_samples
+                             or abs(median(self._g7_samples) - 80) >= 10):
+            # The recorded G7 repeatedly says exactly 80% at unrelated charge
+            # levels, sometimes for minutes after startup. Keep the recent
+            # estimate, or wait for a usable reading if there is no history yet.
+            # Real 80% readings near the current trend are still accepted.
+            pass
+        elif self._g7_sample_at is None or now - self._g7_sample_at >= 5:
+            # Extra refreshes must not give one reading multiple median votes.
+            self._g7_samples.append(level)
+            self._g7_sample_at = now
+        return round(median(self._g7_samples)) if self._g7_samples else None
+
 
     def _read_collection(self, path: bytes) -> Optional[Tuple[int, int, int, int]]:
         dev = hid.device()
@@ -453,9 +483,15 @@ class MchoseProvider(Provider):
             # charging, and one icon either way
             readings.sort(key=lambda r: (not r[1],))
             level, charge, pid, model = readings[0]
+            if key == device_key(G7_VID, G7_PID):
+                raw = level
+                level = self._smooth_g7(raw, charge)
+                self._diag.append(f"    G7 raw={raw}% smoothed="
+                                  + (f"{level}%" if level is not None else "waiting for a usable reading"))
             self._diag.append(f"  -> {key} pid={pid:04x}"
                               + (f" model=0x{model:04x}" if model else "")
-                              + f": {level}%{' (charging)' if charge else ''}")
+                              + (f": {level}%" if level is not None else ": battery pending")
+                              + (" (charging)" if charge else ""))
             self._last[key] = (level, charge, time.time())
             out.append(DeviceStatus(key, self._display_name(key), level, charge, True,
                                     "mchose", kind="mouse"))

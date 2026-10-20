@@ -13,6 +13,10 @@ and the project follows [Semantic Versioning](https://semver.org/).
   features and settings is in `docs/features.md` and the credits in `docs/credits.md`.
 
 ### Fixed
+- **MCHOSE G7 battery spikes**: a five-reading median smooths the displayed level,
+  with the recurring out-of-trend 80% reply ignored. Charging is shown immediately,
+  and a ten-minute reporting gap starts a fresh estimate. Raw readings remain in
+  Diagnostics; other MCHOSE models keep their existing readings.
 - **Start-up with portable mode no longer hangs in a folder it cannot write to**: the
   check whether the app folder is writable used `tempfile`, which on Windows retries
   forever when the folder's permissions deny creating files (Program Files). It is now one
