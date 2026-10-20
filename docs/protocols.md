@@ -195,10 +195,16 @@ A different chip from the M7 Ultra, and a different protocol: a 65-byte output r
 The G7 display uses the rounded median of its five recent battery readings, accepting
 new samples at least five seconds apart. A recorded 100%-to-2% discharge trace from
 @joeabouserhal repeatedly returned exactly 80% at unrelated charge levels, sometimes
-for minutes after startup. That value is ignored until a usable reading exists, or
-when it differs from the current median by at least ten points; genuine readings
-near 80% are kept. Charging bypasses smoothing. A reporting gap of ten minutes or a
-backward clock resets the filter, with no estimate made for the missing period.
+for up to 47 minutes, including after gaps. With no history, five consecutive
+80% readings spaced at least five seconds apart provide a fallback; this avoids
+an indefinitely blank level but cannot prove that 80% is correct. Once an estimate
+exists, 80% is ignored when it differs from the median by at least ten points;
+genuine readings near 80% are kept. A drop more than twenty points below the median
+is accepted on the second similar reading (within five points, at least five
+seconds apart). An intervening contradictory reply cancels that confirmation;
+other readings keep the five-sample median. Charging bypasses smoothing. A reporting
+gap of ten minutes or a backward clock resets all confirmation and sample history,
+with no estimate made for the missing period.
 Diagnostics includes both raw and smoothed levels. This reduces jitter in the
 reported gauge; it does not measure true cell capacity or calibrate runtime.
 

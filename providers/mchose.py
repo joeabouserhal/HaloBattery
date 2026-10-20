@@ -254,29 +254,58 @@ class MchoseProvider(Provider):
         self._g7_samples = deque(maxlen=5)
         self._g7_seen_at: Optional[float] = None
         self._g7_sample_at: Optional[float] = None
+        self._g7_startup_80 = 0
+        self._g7_80_at: Optional[float] = None
+        self._g7_low: Optional[Tuple[int, float]] = None
 
     def _smooth_g7(self, level: int, charging: bool) -> Optional[int]:
-        """Reject the G7 trace's stale 80% replies and median-filter normal jitter."""
+        """Median-filter jitter, with bounded startup and confirmed large drops."""
         now = time.monotonic()
-        if self._g7_seen_at is None or not 0 <= now - self._g7_seen_at < 600:
+        if charging or self._g7_seen_at is None or not 0 <= now - self._g7_seen_at < 600:
             self._g7_samples.clear()
             self._g7_sample_at = None
+            self._g7_startup_80 = 0
+            self._g7_80_at = None
+            self._g7_low = None
         self._g7_seen_at = now
         if charging:
-            self._g7_samples.clear()
             self._g7_samples.append(level)
             self._g7_sample_at = now
-        elif level == 80 and (not self._g7_samples
-                             or abs(median(self._g7_samples) - 80) >= 10):
-            # The recorded G7 repeatedly says exactly 80% at unrelated charge
-            # levels, sometimes for minutes after startup. Keep the recent
-            # estimate, or wait for a usable reading if there is no history yet.
-            # Real 80% readings near the current trend are still accepted.
-            pass
-        elif self._g7_sample_at is None or now - self._g7_sample_at >= 5:
-            # Extra refreshes must not give one reading multiple median votes.
-            self._g7_samples.append(level)
-            self._g7_sample_at = now
+        elif level == 80 and not self._g7_samples:
+            # Repeated 80s can be stale for many minutes. Five spaced readings
+            # are an availability fallback, not proof of the true charge.
+            if self._g7_80_at is None or now - self._g7_80_at >= 5:
+                self._g7_startup_80 += 1
+                self._g7_80_at = now
+                if self._g7_startup_80 >= 5:
+                    self._g7_samples.append(80)
+                    self._g7_sample_at = now
+        else:
+            self._g7_startup_80 = 0
+            self._g7_80_at = None
+            centre = median(self._g7_samples) if self._g7_samples else None
+            if level == 80 and centre is not None and abs(centre - 80) >= 10:
+                # Keep rejecting out-of-trend 80s once there is an estimate.
+                self._g7_low = None
+            elif self._g7_sample_at is None or now - self._g7_sample_at >= 5:
+                if centre is not None and centre - level > 20:
+                    pending = self._g7_low
+                    if pending is not None and abs(pending[0] - level) <= 5 and now - pending[1] >= 5:
+                        # Two similar, spaced low replies can replace the high
+                        # history one poll sooner; a single spike cannot.
+                        self._g7_samples.clear()
+                        self._g7_samples.append(pending[0])
+                        self._g7_low = None
+                    else:
+                        self._g7_low = (level, now)
+                else:
+                    self._g7_low = None
+                self._g7_samples.append(level)
+                self._g7_sample_at = now
+            elif self._g7_low is not None and (centre is None or centre - level <= 20
+                                             or abs(self._g7_low[0] - level) > 5):
+                # Even a fast contradictory refresh cancels confirmation.
+                self._g7_low = None
         return round(median(self._g7_samples)) if self._g7_samples else None
 
 

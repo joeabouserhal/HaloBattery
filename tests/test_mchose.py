@@ -181,6 +181,98 @@ class G7SmoothingTest(unittest.TestCase):
         self.assertIsNone(self.sample(80, 120))
         self.assertEqual(self.sample(12, 180), 12)
 
+    def test_five_spaced_startup_80s_eventually_show_a_level(self):
+        for at in (0, 60, 120, 180):
+            self.assertIsNone(self.sample(80, at))
+        self.assertEqual(self.sample(80, 240), 80)
+        self.assertEqual(self.sample(80, 300), 80)
+
+    def test_fast_startup_refreshes_do_not_confirm_80(self):
+        for at in range(5):
+            self.assertIsNone(self.sample(80, at))
+        for at in (5, 10, 15):
+            self.assertIsNone(self.sample(80, at))
+        self.assertEqual(self.sample(80, 20), 80)
+
+    def test_startup_80_confirmation_resets_after_a_gap_or_backward_clock(self):
+        for restart in (780, 100):
+            with self.subTest(restart=restart):
+                self.provider = M.MchoseProvider()
+                for at in (0, 60, 120, 180):
+                    self.assertIsNone(self.sample(80, at))
+                for at in range(restart, restart + 240, 60):
+                    self.assertIsNone(self.sample(80, at))
+                self.assertEqual(self.sample(80, restart + 240), 80)
+
+    def test_a_non80_reading_ends_startup_wait_even_on_a_fast_refresh(self):
+        for at in (0, 60, 120, 180):
+            self.assertIsNone(self.sample(80, at))
+        self.assertEqual(self.sample(12, 181), 12)
+        self.assertEqual(self.sample(80, 240), 12)
+
+    def test_two_similar_spaced_large_drops_are_shown_on_the_second_poll(self):
+        for i in range(5):
+            self.sample(50, i * 60)
+        self.assertEqual(self.sample(10, 300), 50)
+        self.assertEqual(self.sample(12, 360), 11)
+
+    def test_an_isolated_large_low_spike_does_not_move_the_level(self):
+        for i in range(5):
+            self.sample(50, i * 60)
+        self.assertEqual(self.sample(0, 300), 50)
+        self.assertEqual(self.sample(50, 360), 50)
+
+    def test_inconsistent_low_replies_do_not_confirm_a_drop(self):
+        for i in range(5):
+            self.sample(50, i * 60)
+        self.assertEqual(self.sample(10, 300), 50)
+        self.assertEqual(self.sample(25, 360), 50)
+        self.assertEqual(self.sample(50, 420), 50)
+
+    def test_a_fast_rebound_cancels_low_confirmation(self):
+        for i in range(5):
+            self.sample(50, i * 60)
+        self.assertEqual(self.sample(10, 300), 50)
+        self.assertEqual(self.sample(50, 301), 50)
+        self.assertEqual(self.sample(10, 305), 50)
+        self.assertEqual(self.sample(10, 310), 10)
+
+    def test_rejected_80_between_lows_cancels_confirmation(self):
+        for i in range(5):
+            self.sample(50, i * 60)
+        self.assertEqual(self.sample(10, 300), 50)
+        self.assertEqual(self.sample(80, 330), 50)
+        self.assertEqual(self.sample(10, 360), 50)
+
+    def test_a_twenty_point_drop_keeps_the_normal_median(self):
+        for i in range(5):
+            self.sample(50, i * 60)
+        self.assertEqual(self.sample(30, 300), 50)
+        self.assertEqual(self.sample(30, 360), 50)
+        self.assertEqual(self.sample(30, 420), 30)
+
+    def test_confirmed_zero_is_not_hidden(self):
+        for i in range(5):
+            self.sample(50, i * 60)
+        self.assertEqual(self.sample(0, 300), 50)
+        self.assertEqual(self.sample(0, 360), 0)
+
+    def test_charging_cancels_pending_low_confirmation(self):
+        for i in range(5):
+            self.sample(50, i * 60)
+        self.assertEqual(self.sample(10, 300), 50)
+        self.assertEqual(self.sample(90, 301, charging=True), 90)
+        self.assertEqual(self.sample(10, 360), 50)
+
+    def test_a_confirmed_drop_can_recover_upwards(self):
+        for i in range(5):
+            self.sample(50, i * 60)
+        self.sample(10, 300)
+        self.assertEqual(self.sample(10, 360), 10)
+        for i in range(7, 10):
+            value = self.sample(50, i * 60)
+        self.assertEqual(value, 50)
+
     def test_stale_80_is_rejected_at_high_and_low_charge(self):
         for base in (100, 94, 46, 12, 2):
             with self.subTest(base=base):
