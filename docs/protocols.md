@@ -275,6 +275,12 @@ last value on a greyed icon, so live readings want CAM closed.
 
 ## Mice and keyboards
 
+### ATK V75X
+
+**Connection:** 2.4 GHz receiver (`320F:5088`, product `ATK V75X 2.4G Dongle`)
+
+Read-only battery command from [ATK HUB](https://hub.atk.pro/), Evision keyboard controller in [`keyboard-info.util-D8BvmqVT.js`](https://bpcdn.atkgear.com/hub-v3/production/3.2.29/static/keyboard-info.util-D8BvmqVT.js) (driver 3.2.29). The existing Evision keyboard provider (`providers/lofree.py`) handles this exchange. On vendor collection `FF1C:0092`, send output report `04` followed by 31 bytes: a little-endian request id, command `1A`, then zeroes. The input report echoes the id and command; payload bytes 7 and 8 are percentage and charge state (`2` = charging). Reject unrelated replies, nonzero offsets and levels above 100. The product string is required because other keyboard brands share this VID/PID. No configuration handshake is needed. **Confirmed on a real V75X receiver**: three matching 59% discharging replies on 2026-10-20. Charging parsing follows the vendor driver and has not been checked with a cable.
+
 ### Keychron Ultra-Link 8K, Keychron M5
 
 **Connection:** 2.4 GHz receiver (3434:D028) and USB cable (3434:D048)

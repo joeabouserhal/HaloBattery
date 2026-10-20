@@ -6,6 +6,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **ATK V75X keyboard over its 2.4 GHz dongle** (`320F:5088`): battery percentage
+  through the existing Evision keyboard provider, using ATK HUB's battery-only
+  request. Confirmed on a real receiver; the charging flag follows the vendor driver
+  and has not been checked with a cable.
+
 ### Changed
 - **A tidier repository and a shorter README**: the app's modules moved into the `halo/`
   package (`halo_battery.pyw` stays the entry point), the .bat helpers into `scripts/`

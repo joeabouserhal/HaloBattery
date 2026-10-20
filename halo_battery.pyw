@@ -194,7 +194,7 @@ PROVIDER_LABELS = {
     "jbl": "JBL Quantum",
     "keychron": "Keychron",
     "lamzu": "LAMZU mice",
-    "lofree": "Lofree keyboards",
+    "lofree": "Lofree / ATK keyboards",
     "logitech": "Logitech",
     "logitech_centurion": "Logitech G PRO X 2 LIGHTSPEED",
     "mchose": "MCHOSE mice",
