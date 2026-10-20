@@ -7,6 +7,8 @@ from providers import atk_keyboard as A
 
 
 CAPTURE = bytes.fromhex("04 01 6a 1a 00 00 00 00 3b 00" + " 00" * 54)
+CHARGING_CAPTURE = bytes.fromhex("04 01 7b 1a 00 00 00 00 3c 01" + " 00" * 54)
+UNPLUGGED_CAPTURE = bytes.fromhex("04 01 7c 1a 00 00 00 00 3e 00" + " 00" * 54)
 
 
 def entry(**changes):
@@ -54,12 +56,16 @@ class ReplyTests(unittest.TestCase):
     def test_real_59_percent_capture(self):
         self.assertEqual(A.battery_reply(CAPTURE, 0x6A01), (59, False))
 
-    def test_charging_state_comes_from_vendor_keyboard_protocol(self):
+    def test_vendor_charge_state_2_is_still_supported(self):
         report = list(CAPTURE)
         report[9] = 2
         self.assertEqual(A.battery_reply(report, 0x6A01), (59, True))
-        report[9] = 1
-        self.assertEqual(A.battery_reply(report, 0x6A01), (59, False))
+
+    def test_real_charging_capture(self):
+        self.assertEqual(A.battery_reply(CHARGING_CAPTURE, 0x7B01), (60, True))
+
+    def test_real_unplugged_capture(self):
+        self.assertEqual(A.battery_reply(UNPLUGGED_CAPTURE, 0x7C01), (62, False))
 
     def test_zero_and_full_are_valid(self):
         for level in (0, 100):
@@ -104,6 +110,15 @@ class PollTests(unittest.TestCase):
         self.assertEqual(self.device.writes, [[4, 1, 0, 0x1A] + [0] * 28])
         self.assertTrue(self.device.closed)
         self.assertIn("59%", " ".join(self.provider.diagnostics()))
+
+    def test_cable_changes_update_the_existing_keyboard_status(self):
+        self.device.level, self.device.state = 60, 1
+        charging, = self.provider.poll()
+        self.assertEqual((charging.level, charging.charging, charging.online), (60, True, True))
+        self.device.level, self.device.state = 62, 0
+        unplugged, = self.provider.poll()
+        self.assertEqual((unplugged.level, unplugged.charging, unplugged.online), (62, False, True))
+        self.assertEqual(charging.key, unplugged.key)
 
     def test_other_collections_and_shared_vid_pid_keyboards_are_not_opened(self):
         other = [entry(usage_page=1, usage=6, path=b"typing"),

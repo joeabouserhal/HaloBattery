@@ -9,8 +9,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 ### Added
 - **ATK V75X keyboard over its 2.4 GHz dongle** (`320F:5088`): battery percentage
   through a dedicated ATK keyboard provider, using ATK HUB's battery-only
-  request. Confirmed on a real receiver; the charging flag follows the vendor driver
-  and has not been checked with a cable.
+  request. Battery and charging status confirmed on a real receiver, including
+  charging-cable connection and disconnection.
 
 ### Changed
 - **A tidier repository and a shorter README**: the app's modules moved into the `halo/`

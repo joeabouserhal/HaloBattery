@@ -10,7 +10,8 @@ The device table in demoMode.store-CYJllHvf.js binds ATK V75X 2.4G Dongle to
 No setup or configuration writes are needed. The request-id echo validates
 responses independently; the battery query is the only command sent.
 Confirmed on a V75X receiver: 04 01 6a 1a 00 00 00 00 3b 00 ... = 59%,
-discharging. Charging parsing follows the driver and is not hardware-verified.
+discharging. Live cable checks also confirmed 1 while charging and 0 after
+unplugging; state 2 is retained from the vendor driver, but unverified on hardware.
 """
 from __future__ import annotations
 
@@ -41,7 +42,9 @@ def battery_reply(report, sequence: int) -> Optional[Tuple[int, bool]]:
     level, state = report[8:10]
     if not 0 <= level <= 100 or state not in (0, 1, 2):
         return None
-    return level, state == 2  # ATK's keyboard driver uses 2 for charging
+    # V75X captures: 1 while charging, 0 after unplugging. ATK's driver also
+    # recognizes 2 as charging, so retain that documented variant.
+    return level, state in (1, 2)
 
 
 class AtkKeyboardProvider(Provider):
