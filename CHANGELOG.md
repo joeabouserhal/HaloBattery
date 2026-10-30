@@ -6,6 +6,11 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.15.2] - 2026-10-30
+
+### Fixed
+- ATK V75X keeps its normal tray icon and cached percentage when polling pauses. Only the right-click menu shows the paused status. The ten-second input window is unchanged; failed queries and disconnected receivers still appear offline.
+
 ## [1.15.1] - 2026-10-30
 
 ### Changed
