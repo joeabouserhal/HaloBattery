@@ -8,6 +8,9 @@ import sys
 import threading
 import time
 
+# How long recent ATK input permits an active battery request.
+ACTIVE_WINDOW = 5.0
+
 
 class KeyboardActivity:
     def __init__(self):
@@ -38,14 +41,14 @@ class KeyboardActivity:
             if kind != 1 or self.normalize(path) not in self.paths:
                 return
             now = time.monotonic()
-            resumed = self.last is None or now - self.last >= 30
+            resumed = self.last is None or now - self.last >= ACTIVE_WINDOW
             self.last = now
         if resumed and self.wake is not None:
             self.wake()
 
     def active(self):
         with self._lock:
-            return self.last is not None and 0 <= time.monotonic() - self.last < 30
+            return self.last is not None and 0 <= time.monotonic() - self.last < ACTIVE_WINDOW
 
     def start(self):
         if self._thread is None and sys.platform == "win32":
