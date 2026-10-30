@@ -6,6 +6,14 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.15.1] - 2026-10-30
+
+### Changed
+- ATK V75X battery requests stop after ten seconds without input from that keyboard. The last known level remains labelled as cached; typing resumes polling. Mouse activity and other keyboards are ignored.
+- This fork includes MCHOSE G7 spike filtering and local crash/exit diagnostics. Update checks use joeabouserhal/HaloBattery.
+- Includes both device contributions below; no new menus or buttons. Keyboard hardware sleep still requires an idle observation.
+
+
 ### Added
 - **ATK V75X keyboard over its 2.4 GHz dongle** (`320F:5088`): battery percentage
   through a dedicated ATK keyboard provider, using ATK HUB's battery-only
