@@ -16,9 +16,9 @@ class ActivityTests(unittest.TestCase):
             a.wake.assert_called_once()
             a.observe(1,"atk-keys")
             a.wake.assert_called_once()
-        with mock.patch("providers.atk_activity.time.monotonic", return_value=14.999):
+        with mock.patch("providers.atk_activity.time.monotonic", return_value=19.999):
             self.assertTrue(a.active())
-        with mock.patch("providers.atk_activity.time.monotonic", return_value=15):
+        with mock.patch("providers.atk_activity.time.monotonic", return_value=20):
             self.assertFalse(a.active())
             a.observe(1,"atk-keys")
             self.assertEqual(a.wake.call_count,2)

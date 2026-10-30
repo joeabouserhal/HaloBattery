@@ -9,7 +9,7 @@ import threading
 import time
 
 # How long recent ATK input permits an active battery request.
-ACTIVE_WINDOW = 5.0
+ACTIVE_WINDOW = 10.0
 
 
 class KeyboardActivity:
