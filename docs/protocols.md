@@ -300,7 +300,7 @@ Read-only battery command from [ATK HUB](https://hub.atk.pro/), Evision keyboard
 Battery queries pause after ten seconds without input from this ATK keyboard.
 A Windows Raw Input listener reads device headers only, retains no key contents,
 and ignores mouse input, other keyboards and vendor battery reports. On the next
-ATK key event it wakes the poll loop. While idle, the tray shows a cached value
+ATK key event it wakes the poll loop. While idle, the tray icon keeps its normal appearance and percentage; the right-click menu alone identifies the value as cached and polling as paused
 and does not claim a current charging state. Startup waits for typing rather
 than waking an idle keyboard; a failed listener also leaves queries paused.
 No protocol or sleep-setting writes are introduced. Physical sleep still needs

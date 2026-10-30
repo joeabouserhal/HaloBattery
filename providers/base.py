@@ -27,6 +27,8 @@ class DeviceStatus:
                                  # greyed because its device is off must not re-poll
                                  # the app on every keystroke (review, #202).
 
+    polling_paused: bool = False  # cached by choice; keep normal icon, explain in menu only
+
 
 class Provider:
     """A provider knows how to find its devices and read their battery level."""

@@ -33,6 +33,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
   Two similar, spaced large drops update the level sooner. Charging is immediate,
   and a ten-minute reporting gap starts fresh. Raw readings remain in Diagnostics;
   other MCHOSE models keep their existing readings.
+- **ATK paused icon**: retain its normal appearance and percentage; show the paused/last-known status only in the right-click menu.
 - **ATK V75X sleep-friendly polling**: pause battery queries while the keyboard is idle, keep a labelled last-known reading, and refresh when that keyboard is used again.
 - **Start-up with portable mode no longer hangs in a folder it cannot write to**: the
   check whether the app folder is writable used `tempfile`, which on Windows retries

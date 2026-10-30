@@ -152,6 +152,7 @@ class PollTests(unittest.TestCase):
         status, = self.provider.poll()
         self.assertEqual((status.level, status.online, status.charging), (None, False, False))
         self.assertFalse(status.wake_on_input)
+        self.assertFalse(status.polling_paused)
         self.assertTrue(self.device.closed)
         self.assertLess(self.clock, 1.5)
 
@@ -184,7 +185,8 @@ class PollTests(unittest.TestCase):
             self.assertEqual(status.level, 59)
             self.assertFalse(status.online)
             self.assertFalse(status.charging)
-            self.assertIn("last known", status.approx)
+            self.assertTrue(status.polling_paused)
+            self.assertEqual(status.approx, "")
             self.assertFalse(status.wake_on_input)
         self.assertEqual(len(self.device.writes), count)
 

@@ -112,7 +112,7 @@ class AtkKeyboardProvider(Provider):
                 self._cached = answer
                 log.info("ATK battery refreshed: %d%%, charging=%s", *answer)
             else:
-                return [self._idle_status()]
+                return [self._idle_status(paused=False)]
             level, charging = answer if answer is not None else (None, False)
             return [DeviceStatus("atk_keyboard:320f:5088", "ATK V75X", level, charging,
                                  answer is not None, self.name, kind="keyboard",
@@ -122,12 +122,12 @@ class AtkKeyboardProvider(Provider):
         self.activity.configure([])
         return []
 
-    def _idle_status(self):
+    def _idle_status(self, paused=True):
         level = self._cached[0] if self._cached else None
-        text = (f"{level}% (last known; polling paused while idle)" if level is not None
-                else "battery pending; press an ATK key to refresh")
+        text = "" if paused else (f"{level}% (last known; no fresh reply)" if level is not None
+                                  else "battery not reported yet")
         return DeviceStatus("atk_keyboard:320f:5088", "ATK V75X", level, False, False,
-                            self.name, approx=text, kind="keyboard")
+                            self.name, approx=text, kind="keyboard", polling_paused=paused)
 
     def close(self):
         self.activity.close()

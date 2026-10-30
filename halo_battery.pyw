@@ -823,6 +823,8 @@ def describe(st: DeviceStatus, name: Optional[str] = None, left: str = "") -> st
 
 def device_state(st: DeviceStatus, left: str = "") -> str:
     """The part of describe() after the name: "85%, charging", "no link ..."."""
+    if st.polling_paused:
+        return f"{st.level}%" if st.level is not None else "battery not reported yet"
     if st.approx:
         state = st.approx          # XInput: coarse levels or "not reported yet", never a fake "NN%"
     elif st.level is None:
@@ -935,6 +937,7 @@ class DeviceIcon:
             self._update(st)
 
     def _update(self, st: DeviceStatus) -> None:
+        paused_changed = bool(self.status and self.status.polling_paused) != st.polling_paused
         self.status = st
         badge = self.app.pictogram(st) if self.app.cfg["badges"] else ""
         animate = self.app.cfg["animation"] and st.charging and st.online
@@ -942,8 +945,8 @@ class DeviceIcon:
         # (st.approx) keeps its pictogram rather than showing a made-up exact number
         text = (str(st.level) if self.app.cfg.get("percent_in_icon") and st.level is not None
                 and not st.approx else "")
-        state = (st.level, st.charging, st.online, self.app.low_for(st),
-                 self.app.light_taskbar, badge, animate, text)
+        state = (st.level, st.charging, st.online or st.polling_paused, self.app.low_for(st),
+                 self.app.light_taskbar, badge, animate, text, st.polling_paused)
         if state != self._state:
             self._state = state
             art = self._art(state)
@@ -955,7 +958,7 @@ class DeviceIcon:
                 self.icon.icon = art
         title = describe(st, self.app.display_name(st), self.app.time_left_text(st))
         # the tray tooltip is limited to 127 characters
-        if self.icon.title != title[:127]:
+        if self.icon.title != title[:127] or paused_changed:
             self.icon.title = title[:127]
             # pystray builds the Windows menu once and keeps its texts. The menu header
             # shows the same text as the tooltip, so rebuild the menu when it changes;
@@ -978,8 +981,8 @@ class DeviceIcon:
         draw anything again. The cache holds one state, in at most both colours."""
         art = self._images.get(state)
         if art is None:
-            level, charging, online, low, light, badge, animate, text = state
-            other = (level, charging, online, low, not light, badge, animate, text)
+            level, charging, online, low, light, badge, animate, text, paused = state
+            other = (level, charging, online, low, not light, badge, animate, text, paused)
             kept = self._images.get(other)
             self._images.clear()
             if kept is not None:
@@ -987,7 +990,7 @@ class DeviceIcon:
             if animate:
                 art = icons.charging_frames(level, online, low, light, badge, text=text)
             else:
-                art = icons.render(level, charging, online, low, light, badge, text=text)
+                art = icons.render(level, charging, online, low, light, badge, text=text, force_active=paused)
             self._images[state] = art
         return art
 
@@ -1100,6 +1103,8 @@ class App:
 
         def header_detail():
             if owner and owner.status:
+                if owner.status.polling_paused:
+                    return device_state(owner.status) + "; polling paused (last known; waiting for keyboard input)"
                 return device_state(owner.status, self.time_left_text(owner.status))
             return ""
 
@@ -1733,13 +1738,13 @@ class App:
             for key in list(self.icons):
                 if key not in seen and (may_go is None or may_go(key)):
                     st = self.icons[key].status
-                    if keep and st is not None and not st.online:
+                    if keep and st is not None and not st.online and not st.polling_paused:
                         continue      # already kept: greyed with its last level
                     self.missing[key] = self.missing.get(key, 0) + 1
                     limit = 1 if key.startswith(("xinput:", "bt:", "ps:")) else 2
                     if self.missing[key] >= limit and keep and st is not None:
                         # "keep disconnected devices": grey icon, last level, no alerts
-                        self.icons[key].update(replace(st, online=False, charging=False))
+                        self.icons[key].update(replace(st, online=False, charging=False, polling_paused=False))
                         self.missing.pop(key, None)
                     elif self.missing[key] >= limit:
                         gone.append(self.icons.pop(key))
