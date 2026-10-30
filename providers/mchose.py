@@ -73,6 +73,8 @@ in every reading so far).
 from __future__ import annotations
 
 import time
+from collections import deque
+from statistics import median
 from typing import Dict, List, Optional, Tuple
 
 import hid
@@ -246,9 +248,66 @@ class MchoseProvider(Provider):
 
     def __init__(self):
         self._diag: List[str] = []
-        self._last: Dict[str, Tuple[int, bool, float]] = {}
+        self._last: Dict[str, Tuple[Optional[int], bool, float]] = {}
         self._names: Dict[str, str] = {}
         self._models: Dict[str, int] = {}
+        self._g7_samples = deque(maxlen=5)
+        self._g7_seen_at: Optional[float] = None
+        self._g7_sample_at: Optional[float] = None
+        self._g7_startup_80 = 0
+        self._g7_80_at: Optional[float] = None
+        self._g7_low: Optional[Tuple[int, float]] = None
+
+    def _smooth_g7(self, level: int, charging: bool) -> Optional[int]:
+        """Median-filter jitter, with bounded startup and confirmed large drops."""
+        now = time.monotonic()
+        if charging or self._g7_seen_at is None or not 0 <= now - self._g7_seen_at < 600:
+            self._g7_samples.clear()
+            self._g7_sample_at = None
+            self._g7_startup_80 = 0
+            self._g7_80_at = None
+            self._g7_low = None
+        self._g7_seen_at = now
+        if charging:
+            self._g7_samples.append(level)
+            self._g7_sample_at = now
+        elif level == 80 and not self._g7_samples:
+            # Repeated 80s can be stale for many minutes. Five spaced readings
+            # are an availability fallback, not proof of the true charge.
+            if self._g7_80_at is None or now - self._g7_80_at >= 5:
+                self._g7_startup_80 += 1
+                self._g7_80_at = now
+                if self._g7_startup_80 >= 5:
+                    self._g7_samples.append(80)
+                    self._g7_sample_at = now
+        else:
+            self._g7_startup_80 = 0
+            self._g7_80_at = None
+            centre = median(self._g7_samples) if self._g7_samples else None
+            if level == 80 and centre is not None and abs(centre - 80) >= 10:
+                # Keep rejecting out-of-trend 80s once there is an estimate.
+                self._g7_low = None
+            elif self._g7_sample_at is None or now - self._g7_sample_at >= 5:
+                if centre is not None and centre - level > 20:
+                    pending = self._g7_low
+                    if pending is not None and abs(pending[0] - level) <= 5 and now - pending[1] >= 5:
+                        # Two similar, spaced low replies can replace the high
+                        # history one poll sooner; a single spike cannot.
+                        self._g7_samples.clear()
+                        self._g7_samples.append(pending[0])
+                        self._g7_low = None
+                    else:
+                        self._g7_low = (level, now)
+                else:
+                    self._g7_low = None
+                self._g7_samples.append(level)
+                self._g7_sample_at = now
+            elif self._g7_low is not None and (centre is None or centre - level <= 20
+                                             or abs(self._g7_low[0] - level) > 5):
+                # Even a fast contradictory refresh cancels confirmation.
+                self._g7_low = None
+        return round(median(self._g7_samples)) if self._g7_samples else None
+
 
     def _read_collection(self, path: bytes) -> Optional[Tuple[int, int, int, int]]:
         dev = hid.device()
@@ -453,9 +512,15 @@ class MchoseProvider(Provider):
             # charging, and one icon either way
             readings.sort(key=lambda r: (not r[1],))
             level, charge, pid, model = readings[0]
+            if key == device_key(G7_VID, G7_PID):
+                raw = level
+                level = self._smooth_g7(raw, charge)
+                self._diag.append(f"    G7 raw={raw}% smoothed="
+                                  + (f"{level}%" if level is not None else "waiting for a usable reading"))
             self._diag.append(f"  -> {key} pid={pid:04x}"
                               + (f" model=0x{model:04x}" if model else "")
-                              + f": {level}%{' (charging)' if charge else ''}")
+                              + (f": {level}%" if level is not None else ": battery pending")
+                              + (" (charging)" if charge else ""))
             self._last[key] = (level, charge, time.time())
             out.append(DeviceStatus(key, self._display_name(key), level, charge, True,
                                     "mchose", kind="mouse"))

@@ -192,6 +192,22 @@ The same protocol as the M7 Ultra on MCHOSE's newer vendor id, which the referen
 
 A different chip from the M7 Ultra, and a different protocol: a 65-byte output report `00 55 30 A5 0B 2E 01 01 01`, answered by an input report starting `AA 30` whose byte 8 is the level and byte 9 the charging flag. Written from @kek353's own monitor and the device dump in [#8](https://github.com/HeyOkay/HaloBattery/issues/8); only its 0xFF01 vendor collection is written to. Confirmed on @kek353's G7, which answers `aa 30 a5 0b 0a 01 01 01 2e 00 00 00` — 46%, not charging, the same level their own tool shows — and again on its cable (`aa 30 a5 3c 0a 01 01 01 2e 01 00 00`, byte 9 = 1 while charging) with the PID unchanged, so a G7 keeps one icon on the dongle or on the cable. Only the `AA 30` header is relied on: byte 3 differs between the two (`0x0b` against `0x3c`). A level out of range is refused rather than shown
 
+The G7 display uses the rounded median of its five recent battery readings, accepting
+new samples at least five seconds apart. A recorded 100%-to-2% discharge trace from
+@joeabouserhal repeatedly returned exactly 80% at unrelated charge levels, sometimes
+for up to 47 minutes, including after gaps. With no history, five consecutive
+80% readings spaced at least five seconds apart provide a fallback; this avoids
+an indefinitely blank level but cannot prove that 80% is correct. Once an estimate
+exists, 80% is ignored when it differs from the median by at least ten points;
+genuine readings near 80% are kept. A drop more than twenty points below the median
+is accepted on the second similar reading (within five points, at least five
+seconds apart). An intervening contradictory reply cancels that confirmation;
+other readings keep the five-sample median. Charging bypasses smoothing. A reporting
+gap of ten minutes or a backward clock resets all confirmation and sample history,
+with no estimate made for the missing period.
+Diagnostics includes both raw and smoothed levels. This reduces jitter in the
+reported gauge; it does not measure true cell capacity or calibrate runtime.
+
 ### MCHOSE M7 Ultra
 
 **Connection:** 2.4 GHz receiver (5253:1020)
