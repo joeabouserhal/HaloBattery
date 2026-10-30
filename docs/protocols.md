@@ -275,6 +275,21 @@ last value on a greyed icon, so live readings want CAM closed.
 
 ## Mice and keyboards
 
+### ATK V75X
+
+**Connection:** 2.4 GHz receiver (`320F:5088`, product `ATK V75X 2.4G Dongle`)
+
+Read-only battery command from [ATK HUB](https://hub.atk.pro/), Evision keyboard controller in [`keyboard-info.util-D8BvmqVT.js`](https://bpcdn.atkgear.com/hub-v3/production/3.2.29/static/keyboard-info.util-D8BvmqVT.js) (driver 3.2.29). The dedicated ATK keyboard provider (`providers/atk_keyboard.py`) handles this exchange. On vendor collection `FF1C:0092`, send output report `04` followed by 31 bytes: a little-endian request id, command `1A`, then zeroes. The input report echoes the id and command; payload bytes 7 and 8 are percentage and charge state (`1` = charging on the tested V75X; `2` is also accepted, as in ATK's driver). Reject unrelated replies, nonzero offsets and levels above 100. The product string is required because other keyboard brands share this VID/PID. No configuration handshake is needed. **Confirmed on a real V75X receiver**: three matching 59% discharging replies on 2026-10-20. Charging was subsequently verified on the same 2.4 GHz receiver: `04 01 7b 1a 00 00 00 00 3c 01 ...` reported 60% with the charging cable connected, then `04 01 7c 1a 00 00 00 00 3e 00 ...` reported 62% and not charging after unplugging. State `2` remains a vendor-documented charging variant, unverified on this unit.
+
+Battery queries pause after ten seconds without input from this ATK keyboard.
+A Windows Raw Input listener reads device headers only, retains no key contents,
+and ignores mouse input, other keyboards and vendor battery reports. On the next
+ATK key event it wakes the poll loop. While idle, the tray shows a cached value
+and does not claim a current charging state. Startup waits for typing rather
+than waking an idle keyboard; a failed listener also leaves queries paused.
+No protocol or sleep-setting writes are introduced. Physical sleep still needs
+an idle test on the keyboard; absence of battery requests alone is not a power measurement.
+
 ### Keychron Ultra-Link 8K, Keychron M5
 
 **Connection:** 2.4 GHz receiver (3434:D028) and USB cable (3434:D048)

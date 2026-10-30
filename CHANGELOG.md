@@ -6,6 +6,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **ATK V75X keyboard over its 2.4 GHz dongle** (`320F:5088`): battery percentage
+  through a dedicated ATK keyboard provider, using ATK HUB's battery-only
+  request. Battery and charging status confirmed on a real receiver, including
+  charging-cable connection and disconnection.
+
 ### Changed
 - **A tidier repository and a shorter README**: the app's modules moved into the `halo/`
   package (`halo_battery.pyw` stays the entry point), the .bat helpers into `scripts/`
@@ -13,6 +19,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
   features and settings is in `docs/features.md` and the credits in `docs/credits.md`.
 
 ### Fixed
+- **ATK V75X sleep-friendly polling**: pause battery queries while the keyboard is idle, keep a labelled last-known reading, and refresh when that keyboard is used again.
 - **Start-up with portable mode no longer hangs in a folder it cannot write to**: the
   check whether the app folder is writable used `tempfile`, which on Windows retries
   forever when the folder's permissions deny creating files (Program Files). It is now one
