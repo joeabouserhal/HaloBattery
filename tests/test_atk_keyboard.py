@@ -100,7 +100,9 @@ class PollTests(unittest.TestCase):
         for patch in patches:
             patch.start()
             self.addCleanup(patch.stop)
-        self.provider = A.AtkKeyboardProvider()
+        self.activity = mock.Mock()
+        self.activity.active.return_value = True
+        self.provider = A.AtkKeyboardProvider(activity=self.activity)
 
     def test_poll_reports_keyboard_and_sends_only_one_battery_query(self):
         status, = self.provider.poll()
@@ -149,7 +151,7 @@ class PollTests(unittest.TestCase):
         self.device.silent = True
         status, = self.provider.poll()
         self.assertEqual((status.level, status.online, status.charging), (None, False, False))
-        self.assertTrue(status.wake_on_input)
+        self.assertFalse(status.wake_on_input)
         self.assertTrue(self.device.closed)
         self.assertLess(self.clock, 1.5)
 
@@ -172,6 +174,38 @@ class PollTests(unittest.TestCase):
                 self.assertIsNone(status.level)
                 self.assertFalse(status.online)
                 self.assertTrue(self.device.closed)
+
+    def test_idle_poll_never_opens_receiver_and_retains_cached_level(self):
+        self.provider.poll()
+        self.activity.active.return_value = False
+        count = len(self.device.writes)
+        for _ in range(10):
+            status, = self.provider.poll()
+            self.assertEqual(status.level, 59)
+            self.assertFalse(status.online)
+            self.assertFalse(status.charging)
+            self.assertIn("last known", status.approx)
+            self.assertFalse(status.wake_on_input)
+        self.assertEqual(len(self.device.writes), count)
+
+    def test_startup_waits_for_typing_without_sending_a_query(self):
+        self.activity.active.return_value = False
+        status, = self.provider.poll()
+        self.assertIsNone(status.level)
+        self.assertEqual(self.device.opens, [])
+
+    def test_listener_failure_does_not_fall_back_to_active_polling(self):
+        self.activity.start.return_value = False
+        self.provider.poll()
+        self.assertEqual(self.device.writes, [])
+
+    def test_disconnect_clears_cached_level(self):
+        self.provider.poll()
+        self.entries = []
+        self.provider.poll()
+        self.entries = [entry()]
+        self.activity.active.return_value = False
+        self.assertIsNone(self.provider.poll()[0].level)
 
     def test_missing_hid_library_is_harmless(self):
         with mock.patch.object(A, "hid", None):

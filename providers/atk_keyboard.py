@@ -1,17 +1,9 @@
 """ATK V75X battery over its 2.4 GHz receiver.
 
-Source: ATK HUB 3.2.29, line 1 of the Evision keyboard driver:
-https://bpcdn.atkgear.com/hub-v3/production/3.2.29/static/keyboard-info.util-D8BvmqVT.js
-Mr.getPowerInfo / sr send command 1A; xr.transferForResult uses report 04 and
-matches a uint16 request id; Mr.init uses 31 payload bytes for wireless;
-Ge.createBattery reads data[0] as percent and data[1] == 2 as charging.
-The device table in demoMode.store-CYJllHvf.js binds ATK V75X 2.4G Dongle to
-320F:5088, FF1C:0092. Other keyboards share these ids: match the product too.
-No setup or configuration writes are needed. The request-id echo validates
-responses independently; the battery query is the only command sent.
-Confirmed on a V75X receiver: 04 01 6a 1a 00 00 00 00 3b 00 ... = 59%,
-discharging. Live cable checks also confirmed 1 while charging and 0 after
-unplugging; state 2 is retained from the vendor driver, but unverified on hardware.
+ATK HUB's Evision keyboard driver uses output/input report 04 on FF1C:0092:
+31 payload bytes, a little-endian request id at 0..1, command 1A at 2,
+and battery/charge state at 7..8. No setup or configuration writes are needed.
+The receiver id is shared with other keyboards, so also match the product name.
 """
 from __future__ import annotations
 
@@ -23,6 +15,7 @@ try:
 except ImportError:  # pragma: no cover
     hid = None
 
+from .atk_activity import KeyboardActivity
 from . import hidlist
 from .base import DeviceStatus, Provider, hexdump, log
 
@@ -50,9 +43,13 @@ def battery_reply(report, sequence: int) -> Optional[Tuple[int, bool]]:
 class AtkKeyboardProvider(Provider):
     name = "atk_keyboard"
 
-    def __init__(self):
+    def __init__(self, activity=None):
         self._diag: List[str] = []
         self._sequence = 0
+        self.activity = activity if activity is not None else KeyboardActivity()
+        self._cached = None
+        self._path = None
+        self._paused = None
 
     def _read(self, path) -> Optional[Tuple[int, bool]]:
         self._sequence = self._sequence % 0xFFFF + 1
@@ -94,12 +91,46 @@ class AtkKeyboardProvider(Provider):
                     or (d.get("product_string") or "").strip().casefold() != PRODUCT.casefold()):
                 continue
             self._diag.append(f"[ATK V75X] {VID:04x}:{PID:04x} 2.4 GHz")
+            paths = [e["path"] for e in infos if e.get("product_id") == PID
+                     and (e.get("product_string") or "").strip().casefold() == PRODUCT.casefold()
+                     and (e.get("usage_page"), e.get("usage")) == (1, 6)]
+            self.activity.configure(paths)
+            if self._path != d["path"]:
+                self._path = d["path"]
+                self._cached = None
+            if not self.activity.start() or not self.activity.active():
+                if self._paused is not True:
+                    log.info("ATK battery polling paused; waiting for keyboard activity")
+                self._paused = True
+                self._diag.append("  queries paused: waiting for ATK keyboard activity")
+                return [self._idle_status()]
+            if self._paused is not False:
+                log.info("ATK battery polling resumed after keyboard activity")
+            self._paused = False
             answer = self._read(d["path"])
+            if answer is not None:
+                self._cached = answer
+                log.info("ATK battery refreshed: %d%%, charging=%s", *answer)
+            else:
+                return [self._idle_status()]
             level, charging = answer if answer is not None else (None, False)
             return [DeviceStatus("atk_keyboard:320f:5088", "ATK V75X", level, charging,
                                  answer is not None, self.name, kind="keyboard",
                                  wake_on_input=answer is None)]
+        self._cached = None
+        self._path = None
+        self.activity.configure([])
         return []
+
+    def _idle_status(self):
+        level = self._cached[0] if self._cached else None
+        text = (f"{level}% (last known; polling paused while idle)" if level is not None
+                else "battery pending; press an ATK key to refresh")
+        return DeviceStatus("atk_keyboard:320f:5088", "ATK V75X", level, False, False,
+                            self.name, approx=text, kind="keyboard")
+
+    def close(self):
+        self.activity.close()
 
     def diagnostics(self) -> List[str]:
         return list(self._diag)

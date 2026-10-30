@@ -19,6 +19,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
   features and settings is in `docs/features.md` and the credits in `docs/credits.md`.
 
 ### Fixed
+- **ATK V75X sleep-friendly polling**: pause battery queries while the keyboard is idle, keep a labelled last-known reading, and refresh when that keyboard is used again.
 - **Start-up with portable mode no longer hangs in a folder it cannot write to**: the
   check whether the app folder is writable used `tempfile`, which on Windows retries
   forever when the folder's permissions deny creating files (Program Files). It is now one
