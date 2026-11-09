@@ -6,6 +6,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **ATK V75X on its USB cable** (`320F:5055`): the same battery request, confirmed on a real V75X (91%, charging). The cable shares the receiver's icon, is preferred when both are connected, and is read every poll without waiting for typing.
+
+### Changed
+- ATK V75X battery requests are rate-limited: while typing, a reading is reused for five minutes, a failed request waits 30 seconds, and resuming typing wakes the poll loop only when a request is due (previously every typing burst after ten idle seconds polled every device).
+
 ## [1.15.2] - 2026-10-30
 
 ### Fixed
